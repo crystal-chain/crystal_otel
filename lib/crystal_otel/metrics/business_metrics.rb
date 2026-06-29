@@ -30,7 +30,7 @@ module CrystalOtel
         config = CrystalOtel.configuration
         return if config.counter_definitions.empty?
 
-        meter = OpenTelemetry.meter_provider.meter('crystal_otel.business')
+        meter = OpenTelemetry.meter_provider.meter("crystal_otel.business")
 
         config.counter_definitions.each do |defn|
           counter = meter.create_counter(
@@ -67,7 +67,7 @@ module CrystalOtel
             sleep GAUGE_COLLECTION_INTERVAL
           end
         end
-        @gauge_thread.name = 'crystal_otel.gauge_collection'
+        @gauge_thread.name = "crystal_otel.gauge_collection"
       end
 
       # Instantiates OTel gauge instruments for every gauge definition and stores
@@ -76,7 +76,7 @@ module CrystalOtel
       # across every collection cycle rather than recreated on each tick.
       def register_gauges
         @gauges = {}
-        meter = OpenTelemetry.meter_provider.meter('crystal_otel.business')
+        meter = OpenTelemetry.meter_provider.meter("crystal_otel.business")
 
         CrystalOtel.configuration.gauge_definitions.each do |defn|
           @gauges[defn[:name]] = meter.create_gauge(defn[:name], description: defn[:description])
@@ -105,7 +105,7 @@ module CrystalOtel
           case result
           when Hash
             result.each do |key, value|
-              attrs = key.is_a?(Array) ? { 'category' => key.join('.') } : { 'category' => key.to_s }
+              attrs = key.is_a?(Array) ? { "category" => key.join(".") } : { "category" => key.to_s }
               gauge.record(value, attributes: attrs)
             end
           else

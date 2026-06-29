@@ -16,7 +16,7 @@ module CrystalOtel
           span.status = OpenTelemetry::Trace::Status.error("HTTP #{status}")
         end
 
-        [status, headers, body]
+        [ status, headers, body ]
       rescue Exception => e # rubocop:disable Lint/RescueException
         # Truly unhandled exceptions that crash the request
         span = OpenTelemetry::Trace.current_span

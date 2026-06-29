@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require 'opentelemetry/sdk'
-require 'opentelemetry-exporter-otlp'
+require "opentelemetry/sdk"
+require "opentelemetry-exporter-otlp"
 
 module CrystalOtel
   # Responsible for initializing the OpenTelemetry SDK for both traces and metrics.
@@ -58,8 +58,8 @@ module CrystalOtel
     # so that business and runtime metric code can obtain meters without
     # needing a direct reference to this module.
     def configure_metrics(config)
-      require 'opentelemetry-metrics-sdk'
-      require 'opentelemetry-exporter-otlp-metrics'
+      require "opentelemetry-metrics-sdk"
+      require "opentelemetry-exporter-otlp-metrics"
 
       metric_exporter = OpenTelemetry::Exporter::OTLP::Metrics::MetricsExporter.new(
         endpoint: "#{config.otlp_endpoint}/v1/metrics"
@@ -83,9 +83,9 @@ module CrystalOtel
     # optional fields like service_version that may not be set in all environments.
     def build_resource_attributes(config)
       attrs = {
-        'service.name' => config.resolved_service_name,
-        'service.version' => config.service_version,
-        'deployment.environment' => (defined?(Rails) ? Rails.env.to_s : 'unknown')
+        "service.name" => config.resolved_service_name,
+        "service.version" => config.service_version,
+        "deployment.environment" => (defined?(Rails) ? Rails.env.to_s : "unknown")
       }
       attrs.merge!(config.resource_attributes)
       attrs.each_with_object({}) do |(k, v), h|
@@ -106,21 +106,21 @@ module CrystalOtel
     #   enqueue span and the execute span remain in the same trace.
     def build_instrumentation_config(config)
       defaults = {
-        'OpenTelemetry::Instrumentation::Rack' => {
-          untraced_endpoints: ['/api/v1/healthz', '/healthz', '/health', '/up']
+        "OpenTelemetry::Instrumentation::Rack" => {
+          untraced_endpoints: [ "/api/v1/healthz", "/healthz", "/health", "/up" ]
         },
-        'OpenTelemetry::Instrumentation::ActionPack' => {
+        "OpenTelemetry::Instrumentation::ActionPack" => {
           span_naming: :class # Use Controller#action as span name
         },
-        'OpenTelemetry::Instrumentation::PG' => {
+        "OpenTelemetry::Instrumentation::PG" => {
           db_statement: :obfuscate,
-          peer_service: 'postgres'
+          peer_service: "postgres"
         },
-        'OpenTelemetry::Instrumentation::Redis' => {
+        "OpenTelemetry::Instrumentation::Redis" => {
           db_statement: :obfuscate,
-          peer_service: 'redis'
+          peer_service: "redis"
         },
-        'OpenTelemetry::Instrumentation::Sidekiq' => {
+        "OpenTelemetry::Instrumentation::Sidekiq" => {
           propagation_style: :child,
           span_naming: :job_class
         }

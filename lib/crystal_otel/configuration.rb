@@ -10,8 +10,8 @@ module CrystalOtel
 
     def initialize
       @service_name = nil # Falls back to Rails app name via resolved_service_name
-      @service_version = ENV.fetch('APP_VERSION', nil)
-      @otlp_endpoint = ENV.fetch('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318')
+      @service_version = ENV.fetch("APP_VERSION", nil)
+      @otlp_endpoint = ENV.fetch("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
       @otlp_protocol = :http
       @enabled = nil # Resolved lazily; see enabled?
       @log_correlation = true
@@ -48,7 +48,7 @@ module CrystalOtel
     # produces a meaningful name in dashboards without any configuration.
     # Falls back further to "unknown" when Rails is not defined.
     def resolved_service_name
-      @service_name || (defined?(Rails) ? Rails.application.class.module_parent_name.underscore : 'unknown')
+      @service_name || (defined?(Rails) ? Rails.application.class.module_parent_name.underscore : "unknown")
     end
 
     # Yields a BusinessMetricsDsl instance to allow a clean block-based syntax

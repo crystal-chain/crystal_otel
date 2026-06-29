@@ -8,7 +8,7 @@ module CrystalOtel
     # to call OpenTelemetry::SDK.configure themselves. Running *after*
     # "opentelemetry.configure" prevents a double-configure race where the SDK
     # resets instrumentation already registered by an earlier initializer.
-    initializer 'crystal_otel.configure_sdk', after: 'opentelemetry.configure' do
+    initializer "crystal_otel.configure_sdk", after: "opentelemetry.configure" do
       next unless CrystalOtel.configuration.enabled?
 
       InstrumentationInstaller.install
@@ -18,7 +18,7 @@ module CrystalOtel
     # Wraps the Rails logger formatter so that every log line emits the current
     # OTel trace_id and span_id. Runs after :initialize_logger to ensure
     # Rails.logger is already set before we decorate it.
-    initializer 'crystal_otel.log_correlation', after: :initialize_logger do
+    initializer "crystal_otel.log_correlation", after: :initialize_logger do
       next unless CrystalOtel.configuration.enabled?
       next unless CrystalOtel.configuration.log_correlation
 
@@ -33,7 +33,7 @@ module CrystalOtel
     # - ExceptionTracker: captures unhandled exceptions as OTel span events.
     # - RequestMetrics: records HTTP request duration and status-code counters.
     # Each middleware is only added when the corresponding feature flag is on.
-    initializer 'crystal_otel.middleware' do |app|
+    initializer "crystal_otel.middleware" do |app|
       next unless CrystalOtel.configuration.enabled?
 
       if CrystalOtel.configuration.exception_tracking
@@ -50,7 +50,7 @@ module CrystalOtel
     # Sidekiq is handled by the opentelemetry-instrumentation-sidekiq gem loaded
     # via +use_all+ in SdkConfigurator#configure_traces; no additional code is
     # needed here beyond the guard checks.
-    initializer 'crystal_otel.sidekiq' do
+    initializer "crystal_otel.sidekiq" do
       next unless CrystalOtel.configuration.enabled?
       next unless CrystalOtel.configuration.sidekiq_tracing
       next unless defined?(Sidekiq)
@@ -64,11 +64,11 @@ module CrystalOtel
     #    start if the application fires that event after initialization.
     # 2. Starts immediately inside after_initialize when running under Puma or
     #    Sidekiq::CLI, covering the common server/worker boot path.
-    initializer 'crystal_otel.runtime_metrics' do
+    initializer "crystal_otel.runtime_metrics" do
       next unless CrystalOtel.configuration.enabled?
       next unless CrystalOtel.configuration.metrics_enabled
 
-      ActiveSupport::Notifications.subscribe('crystalcollect.server.started') do
+      ActiveSupport::Notifications.subscribe("crystalcollect.server.started") do
         Metrics::RuntimeMetrics.start
       end
 
@@ -83,7 +83,7 @@ module CrystalOtel
     # are available. Counter subscriptions are registered in all process types;
     # gauge collection is limited to long-running server/worker processes to avoid
     # opening persistent DB connections in one-shot processes like rake tasks.
-    initializer 'crystal_otel.business_metrics' do
+    initializer "crystal_otel.business_metrics" do
       next unless CrystalOtel.configuration.enabled?
       next unless CrystalOtel.configuration.metrics_enabled
 

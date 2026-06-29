@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
-source 'https://rubygems.org'
+source "https://rubygems.org"
 
 gemspec
 
 group :development, :test do
-  gem 'rspec', '~> 3.13'
-  gem 'simplecov', require: false
+  gem "rspec", "~> 3.13"
+  gem "rubocop-rails-omakase", require: false
+  gem "simplecov", require: false
 end

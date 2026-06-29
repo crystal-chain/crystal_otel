@@ -5,7 +5,7 @@ require_relative 'lib/crystal_otel/version'
 Gem::Specification.new do |spec|
   spec.name = 'crystal_otel'
   spec.version = CrystalOtel::VERSION
-  spec.authors = ['Crystal Chain']
+  spec.authors = [ 'Crystal Chain' ]
   spec.summary = 'OpenTelemetry integration for Crystal Chain Rails apps'
   spec.description = 'Reusable OpenTelemetry gem providing tracing, metrics, log correlation, and exception tracking for Rails applications.'
   spec.license = 'MIT'
@@ -19,7 +19,7 @@ Gem::Specification.new do |spec|
   spec.metadata['rubygems_mfa_required'] = 'true'
 
   spec.files = Dir['lib/**/*', 'LICENSE', 'README.md']
-  spec.require_paths = ['lib']
+  spec.require_paths = [ 'lib' ]
 
   spec.add_dependency 'rails', '>= 7.0'
 
