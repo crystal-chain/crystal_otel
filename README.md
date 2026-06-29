@@ -38,18 +38,11 @@ Create `config/initializers/crystal_otel.rb`:
 
 ```ruby
 CrystalOtel.configure do |config|
-  config.enabled         = ENV.fetch("OTEL_ENABLED", "true") == "true"
-  config.service_name    = ENV.fetch("OTEL_SERVICE_NAME", "my-service")
-  config.service_version = ENV.fetch("OTEL_SERVICE_VERSION", nil)
-  config.otlp_endpoint   = ENV.fetch("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-  config.resource_attributes = {
-    "deployment.environment" => ENV.fetch("OTEL_ENVIRONMENT", Rails.env.to_s),
-    "service.namespace"      => "my-org"
-  }
+  config.service_name = ENV.fetch("OTEL_SERVICE_NAME", "my-service")
 end
 ```
 
-Include `CrystalOtel::ControllerTracking` in `ApplicationController` for automatic request/response span tagging:
+That's the minimum. Everything else resolves from env vars or sensible defaults. Include `CrystalOtel::ControllerTracking` in `ApplicationController` for automatic request/response span tagging:
 
 ```ruby
 class ApplicationController < ActionController::API
@@ -59,19 +52,81 @@ end
 
 ## Configuration Reference
 
+### Core
+
 | Attribute | Env var | Default | Description |
 |---|---|---|---|
-| `enabled` | `OTEL_ENABLED` | `true` (disabled in test) | Master kill-switch |
-| `service_name` | — | Rails app name (underscored) | OTel `service.name` |
+| `service_name` | `OTEL_SERVICE_NAME` | Rails app name (underscored) | OTel `service.name` |
 | `service_version` | `APP_VERSION` | `nil` | OTel `service.version` |
-| `otlp_endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Base URL of the OTLP collector |
-| `log_correlation` | — | `true` | Inject trace/span IDs into logs |
-| `exception_tracking` | — | `true` | Record exceptions as span events |
-| `metrics_enabled` | — | `true` | Enable metrics export |
-| `sidekiq_tracing` | — | `true` | Enable Sidekiq instrumentation |
-| `resource_attributes` | — | `{}` | Extra OTel resource attributes |
-| `instrumentations` | — | `{}` | Per-library instrumentation overrides |
-| `propagators` | — | `[:tracecontext, :baggage]` | W3C propagation (default) |
+| `otlp_endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | Base URL of the OTLP collector (no path suffix) |
+| `resource_attributes` | `OTEL_RESOURCE_ATTRIBUTES` | `{}` | Extra OTel resource attributes — see below |
+
+### Feature flags
+
+| Attribute | Default | Description |
+|---|---|---|
+| `enabled` | `true` (auto-`false` in test) | Enable/disable the gem programmatically |
+| `log_correlation` | `true` | Inject `trace_id`/`span_id` into every log line |
+| `exception_tracking` | `true` | Record unhandled exceptions as span events |
+| `metrics_enabled` | `true` | Enable runtime and business metrics export |
+| `sidekiq_tracing` | `true` | Enable Sidekiq auto-instrumentation |
+| `instrumentations` | `{}` | Per-library instrumentation overrides (merged on top of defaults) |
+| `propagators` | `[:tracecontext, :baggage]` | W3C trace-context propagation |
+
+### Kill-switches
+
+Two independent ways to disable all instrumentation. Either is sufficient; `CRYSTAL_OTEL_DISABLED` takes precedence over everything else.
+
+| Mechanism | How |
+|---|---|
+| `CRYSTAL_OTEL_DISABLED=true` | Env var — no code change needed, works in any environment |
+| `config.enabled = false` | Initializer — evaluated after boot |
+
+When disabled, no SDK is configured, no middleware is inserted, no background threads are started, and no log formatter is wrapped. The gem is present but entirely inert.
+
+### Sampling
+
+| Attribute | Env var | Default | Description |
+|---|---|---|---|
+| `sampling_ratio` | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Fraction of traces to sample (`0.0`–`1.0`). Values < 1.0 activate parent-based ratio sampling automatically. |
+
+```bash
+# Sample 10 % of traces
+OTEL_TRACES_SAMPLER_ARG=0.1 rails server
+```
+
+If `OTEL_TRACES_SAMPLER` is already set in the environment the gem won't override it, so you can use any sampler the OTel SDK supports directly.
+
+### Batch span processor tuning
+
+These mirror the standard OTel SDK env vars. Adjust for high-throughput services to avoid queue pressure.
+
+| Attribute | Env var | Default | Description |
+|---|---|---|---|
+| `batch_max_queue_size` | `OTEL_BSP_MAX_QUEUE_SIZE` | `2048` | Max spans buffered before export |
+| `batch_schedule_delay_ms` | `OTEL_BSP_SCHEDULE_DELAY` | `5000` | Export interval in milliseconds |
+| `batch_max_export_batch_size` | `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | `512` | Max spans per export request |
+
+### Resource attributes
+
+Resource attributes identify the service in every signal (traces, metrics, logs). Two ways to set them:
+
+**Via `OTEL_RESOURCE_ATTRIBUTES`** (standard OTel env var, works across all OTel SDKs):
+
+```bash
+OTEL_RESOURCE_ATTRIBUTES=service.namespace=crystalcollect,team=platform rails server
+```
+
+**Via the initializer** (merges on top of the env var; initializer values win on conflict):
+
+```ruby
+CrystalOtel.configure do |config|
+  config.resource_attributes = {
+    "deployment.environment" => ENV.fetch("OTEL_ENVIRONMENT", Rails.env.to_s),
+    "service.namespace"      => "crystalcollect"
+  }
+end
+```
 
 ## Auto-Instrumented Libraries
 
@@ -98,7 +153,7 @@ Register application-defined metrics in your initializer:
 CrystalOtel.configure do |config|
   config.business_metrics do |m|
     # Counter: incremented each time the named ActiveSupport::Notifications event fires.
-    # The event payload may include :value (integer, defaults to 1) and :attributes (hash).
+    # Payload may include :value (integer, defaults to 1) and :attributes (hash).
     m.counter "product.submissions",
               description: "Product data submissions",
               event:       "product.data.submitted"
@@ -112,30 +167,13 @@ CrystalOtel.configure do |config|
 end
 ```
 
-## Kill-Switch
-
-Disable all instrumentation without touching code:
-
-```bash
-OTEL_ENABLED=false rails server
-```
-
-Or in the initializer:
-
-```ruby
-CrystalOtel.configure do |config|
-  config.enabled = false
-end
-```
-
-When disabled, no SDK is configured, no middleware is inserted, no background threads are started, and no log formatter is wrapped. The gem is present but entirely inert.
-
 ## Development
 
 ```bash
 bundle install
 bundle exec rspec
 bundle exec rubocop
+gem build crystal_otel.gemspec
 ```
 
 ## License

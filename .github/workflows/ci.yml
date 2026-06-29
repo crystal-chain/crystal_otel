@@ -27,6 +27,9 @@ jobs:
       - name: Run tests
         run: bundle exec rspec
 
+      - name: Build gem
+        run: gem build crystal_otel.gemspec
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
