@@ -1,0 +1,26 @@
+inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
+
+AllCops:
+  TargetRubyVersion: 3.1
+  NewCops: enable
+  Exclude:
+    - 'vendor/**/*'
+
+# Specs don't need frozen_string_literal
+Style/FrozenStringLiteralComment:
+  Exclude:
+    - 'spec/**/*'
+
+# Allow longer blocks in specs
+Metrics/BlockLength:
+  Exclude:
+    - 'spec/**/*'
+    - '*.gemspec'
+
+# RSpec multi-expectation blocks are fine
+RSpec/MultipleExpectations:
+  Enabled: false
+
+RSpec/ExampleLength:
+  Max: 20
