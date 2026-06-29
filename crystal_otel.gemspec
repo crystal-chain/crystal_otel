@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary = 'OpenTelemetry integration for Crystal Chain Rails apps'
   spec.description = 'Reusable OpenTelemetry gem providing tracing, metrics, log correlation, and exception tracking for Rails applications.'
   spec.license = 'MIT'
-  spec.required_ruby_version = '>= 3.2'
+  spec.required_ruby_version = '>= 3.3'
 
   spec.homepage = 'https://github.com/crystal-chain/crystalchain_otel'
   spec.metadata['source_code_uri']   = spec.homepage
