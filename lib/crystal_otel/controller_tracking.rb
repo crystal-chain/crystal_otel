@@ -36,7 +36,7 @@ module CrystalOtel
       span.set_attribute("http.request.content_type", request.content_type.to_s) if request.content_type.present?
 
       if request.content_type&.include?("json") && request.raw_post.present?
-        body = request.raw_post.truncate(2048)
+        body = request.raw_post.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?").truncate(2048)
         span.set_attribute("http.request.body", body)
       end
 
@@ -54,7 +54,8 @@ module CrystalOtel
       span.set_attribute("http.response.content_type", response.content_type.to_s) if response.content_type.present?
 
       if response.content_type&.include?("json") && response.body.present?
-        span.set_attribute("http.response.body", response.body.truncate(2048))
+        body = response.body.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?").truncate(2048)
+        span.set_attribute("http.response.body", body)
       end
 
       # Mark 4xx and 5xx responses as errors
