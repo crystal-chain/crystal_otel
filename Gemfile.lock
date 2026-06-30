@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    crystal_otel (0.3.1)
+    crystal_otel (0.3.2)
       opentelemetry-exporter-otlp (~> 0.32)
       opentelemetry-exporter-otlp-metrics (~> 0.7)
       opentelemetry-instrumentation-action_pack (~> 0.15)
