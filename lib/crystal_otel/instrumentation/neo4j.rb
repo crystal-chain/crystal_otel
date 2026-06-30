@@ -2,29 +2,32 @@
 
 module CrystalOtel
   module Instrumentation
-    # Traces every Cypher query issued through ActiveGraph — raw
-    # `ActiveGraph::Base.query(cypher)`, the query builder, and the ORM
-    # persistence layer all funnel through `ActiveGraph::Base.query_run`
-    # (defined by ActiveGraph::Core::Querable).
+    # Traces every Cypher query issued through ActiveGraph. Reads
+    # (`QueryInterface`, the query builder via `Core::Query#response`) and
+    # writes (`neo4j_query` in the persistence layer) all funnel through
+    # `ActiveGraph::Base.query`.
     #
-    # We instrument `query_run` rather than the neo4j-ruby-driver's
-    # `Session#run`/`Transaction#run` deliberately: the driver executes inside
-    # the `async` gem's reactor **Fiber**, and OpenTelemetry's Context is
-    # fiber-local, so a span created there has an empty context and detaches
-    # into its own orphan trace. `query_run` runs on the request thread/fiber
-    # (it only enters the reactor inside its own `transaction { tx.run }`
-    # block), where the controller's span is still current — so spans created
-    # here nest correctly under the controller (or under a manual
-    # `CrystalOtel.trace(...)` span).
+    # We hook `ActiveGraph::Base.query` and *not* a lower layer (the driver's
+    # `Session#run`, or ActiveGraph's `query_run`) on purpose: the
+    # neo4j-ruby-driver marks `run`/`begin_transaction`/`transaction` with
+    # `sync`, which wraps them in the `async` gem's `Sync {}` — a reactor
+    # **Fiber**. OpenTelemetry's `Context` is fiber-local, so any span created
+    # at or below that boundary has an empty context and detaches into its own
+    # orphan trace (this is why instrumenting the driver, and even `query_run`
+    # which runs inside `query`'s `transaction(implicit:true)` block, failed).
+    # `ActiveGraph::Base.query` is the outermost call and runs on the request
+    # thread/fiber, before `transaction` enters `Sync {}`, so the controller's
+    # span is still current and `neo4j.query` spans nest correctly under it (or
+    # under a manual `CrystalOtel.trace(...)` span).
     module Neo4j
       MAX_STATEMENT_LENGTH = 2000
 
       # Prepended onto ActiveGraph::Base's singleton class. Bare `super`
       # forwards the original arguments and propagates any query error normally
       # (tracer.in_span records and re-raises it).
-      module QueryRunInstrumentation
-        def query_run(query, options = {})
-          CrystalOtel::Instrumentation::Neo4j.trace_query(query) { super }
+      module QueryInstrumentation
+        def query(*args)
+          CrystalOtel::Instrumentation::Neo4j.trace_query(args.first) { super }
         end
       end
 
@@ -33,9 +36,9 @@ module CrystalOtel
       def install
         return if @installed
         return unless defined?(::ActiveGraph::Base)
-        return unless ::ActiveGraph::Base.respond_to?(:query_run)
+        return unless ::ActiveGraph::Base.respond_to?(:query)
 
-        ::ActiveGraph::Base.singleton_class.prepend(QueryRunInstrumentation)
+        ::ActiveGraph::Base.singleton_class.prepend(QueryInstrumentation)
         @installed = true
         Rails.logger.info("[CrystalOtel] Neo4j (ActiveGraph) instrumentation installed") if defined?(Rails)
         true
@@ -79,18 +82,21 @@ module CrystalOtel
         }.compact
       end
 
-      # ActiveGraph passes a built query object (responds to #cypher); raw and
-      # driver paths may pass a Query (#to_cypher / #text) or a plain String.
+      # The first arg to ActiveGraph::Base.query is either a String (raw Cypher,
+      # e.g. from QueryInterface) or an ActiveGraph::Core::Query (responds to
+      # #to_cypher). Fall back through #cypher / #text / #to_s for safety.
       def statement_text(query)
-        if query.respond_to?(:cypher)
-          query.cypher.to_s
-        elsif query.respond_to?(:to_cypher)
+        if query.respond_to?(:to_cypher)
           query.to_cypher.to_s
+        elsif query.respond_to?(:cypher)
+          query.cypher.to_s
         elsif query.respond_to?(:text)
           query.text.to_s
         else
           query.to_s
         end
+      rescue StandardError
+        query.to_s
       end
 
       # Strips string-literal *contents* (the real PII risk) while keeping the

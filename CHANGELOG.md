@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-06-30
+
+### Fixed
+
+- **Neo4j query spans now actually nest under the request span.** The 0.4.1 hook point (`query_run`) was still inside the `async` reactor fiber: `ActiveGraph::Base.query` runs its work in a `transaction(implicit: true)` block, and the neo4j-ruby-driver marks `run`/`begin_transaction`/`transaction` with `sync`, wrapping them in the `async` gem's `Sync {}` (a reactor Fiber). Since OpenTelemetry's `Context` is fiber-local, anything at or below that boundary saw an empty context and orphaned. The hook now sits on `ActiveGraph::Base.query` itself — the outermost call, run on the request fiber before `transaction` enters `Sync {}` — which is the single funnel for reads (`QueryInterface`, the query builder) and writes (`neo4j_query` in persistence). `neo4j.query` spans now parent to the active controller/manual span.
+
 ## [0.4.1] - 2026-06-30
 
 ### Fixed
 
-- **Neo4j query spans now nest under the request span instead of detaching into orphan traces.** 0.4.0 instrumented the neo4j-ruby-driver's `Session#run`/`Transaction#run`, but the driver executes queries inside the `async` gem's reactor **Fiber**, and OpenTelemetry's `Context` is fiber-local — so the span was created with an empty context and started its own root trace. The instrumentation now hooks `ActiveGraph::Base.query_run` (the single funnel for raw `Base.query`, the query builder, and the ORM), which runs on the request thread/fiber where the controller span is still current, so `neo4j.query` spans correctly parent to the active span. Guard is now `defined?(ActiveGraph::Base)`.
+- **Neo4j query spans now nest under the request span instead of detaching into orphan traces.** 0.4.0 instrumented the neo4j-ruby-driver's `Session#run`/`Transaction#run`, but the driver executes queries inside the `async` gem's reactor **Fiber**, and OpenTelemetry's `Context` is fiber-local — so the span was created with an empty context and started its own root trace. (Superseded by 0.4.2 — the `query_run` hook was still inside the reactor fiber.)
 
 ## [0.4.0] - 2026-06-30
 
@@ -47,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rails Engine** with ordered initializers so SDK setup runs after any other OTel-aware engines
 
 [0.3.2]: https://github.com/crystal-chain/crystalchain_otel/releases/tag/v0.3.2
+[0.4.2]: https://github.com/crystal-chain/crystalchain_otel/releases/tag/v0.4.2
 [0.4.1]: https://github.com/crystal-chain/crystalchain_otel/releases/tag/v0.4.1
 [0.4.0]: https://github.com/crystal-chain/crystalchain_otel/releases/tag/v0.4.0
 [0.3.1]: https://github.com/crystal-chain/crystalchain_otel/releases/tag/v0.3.1

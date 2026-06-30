@@ -3,20 +3,20 @@ require 'crystal_otel/instrumentation/neo4j'
 
 RSpec.describe CrystalOtel::Instrumentation::Neo4j do
   describe '.statement_text' do
-    it 'extracts #cypher from an ActiveGraph query object' do
-      query = Struct.new(:cypher).new('MATCH (n) RETURN n')
-      expect(described_class.statement_text(query)).to eq('MATCH (n) RETURN n')
+    it 'extracts #to_cypher from an ActiveGraph::Core::Query-like object' do
+      klass = Class.new { def to_cypher(*) = 'MATCH (n) RETURN n' }
+      expect(described_class.statement_text(klass.new)).to eq('MATCH (n) RETURN n')
     end
 
-    it 'falls back to #to_cypher' do
-      klass = Class.new { def to_cypher(*) = 'MERGE (p:Product)' }
-      expect(described_class.statement_text(klass.new)).to eq('MERGE (p:Product)')
-    end
-
-    it 'falls back to #text, then to_s' do
-      with_text = Struct.new(:text).new('CREATE (x)')
-      expect(described_class.statement_text(with_text)).to eq('CREATE (x)')
+    it 'uses a raw String as-is' do
       expect(described_class.statement_text('RAW STRING')).to eq('RAW STRING')
+    end
+
+    it 'falls back through #cypher and #text' do
+      with_cypher = Struct.new(:cypher).new('MERGE (p:Product)')
+      with_text = Struct.new(:text).new('CREATE (x)')
+      expect(described_class.statement_text(with_cypher)).to eq('MERGE (p:Product)')
+      expect(described_class.statement_text(with_text)).to eq('CREATE (x)')
     end
   end
 
@@ -46,8 +46,7 @@ RSpec.describe CrystalOtel::Instrumentation::Neo4j do
     it 'runs the block untraced and returns its value when OpenTelemetry is absent' do
       # OpenTelemetry is not loaded in the plain-Ruby unit suite, so tracing is
       # disabled and the block must still run exactly once.
-      query = Struct.new(:cypher).new('MATCH (n) RETURN n')
-      expect(described_class.trace_query(query) { :result }).to eq(:result)
+      expect(described_class.trace_query('MATCH (n) RETURN n') { :result }).to eq(:result)
     end
 
     it 'does not trace when neo4j_tracing is disabled' do
@@ -57,13 +56,13 @@ RSpec.describe CrystalOtel::Instrumentation::Neo4j do
     end
   end
 
-  describe CrystalOtel::Instrumentation::Neo4j::QueryRunInstrumentation do
+  describe CrystalOtel::Instrumentation::Neo4j::QueryInstrumentation do
     let(:base) do
       Class.new do
-        # Mimics ActiveGraph::Base.query_run(query, options = {}); returns the
-        # args so we can assert forwarding through the prepend.
-        def query_run(query, options = {})
-          [ query, options ]
+        # Mimics ActiveGraph::Base.query(*args); returns the args so we can
+        # assert forwarding through the prepend.
+        def query(*args)
+          args
         end
       end
     end
@@ -74,14 +73,13 @@ RSpec.describe CrystalOtel::Instrumentation::Neo4j do
       klass
     end
 
-    it 'forwards the query and options to super' do
-      query = Struct.new(:cypher).new('MATCH (n) RETURN n')
-      expect(instrumented.new.query_run(query, wrap: true)).to eq([ query, { wrap: true } ])
+    it 'forwards a raw Cypher string to super' do
+      expect(instrumented.new.query('MATCH (n) RETURN n')).to eq([ 'MATCH (n) RETURN n' ])
     end
 
-    it 'defaults options and still calls super' do
-      query = Struct.new(:cypher).new('CREATE (p)')
-      expect(instrumented.new.query_run(query)).to eq([ query, {} ])
+    it 'forwards a query object plus options to super' do
+      query = Class.new { def to_cypher(*) = 'CREATE (p)' }.new
+      expect(instrumented.new.query(query, wrap: false)).to eq([ query, { wrap: false } ])
     end
   end
 end
