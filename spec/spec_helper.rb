@@ -1,3 +1,9 @@
+# Pin the environment to "test" so specs agree on Rails.env whether they run
+# against the lightweight Rails stub below or against real Rails (loaded by the
+# engine integration specs). Several specs assert telemetry is disabled in the
+# test environment, which depends on Rails.env.test? being true.
+ENV['RAILS_ENV'] = 'test'
+
 require 'simplecov'
 SimpleCov.start do
   add_filter '/spec/'

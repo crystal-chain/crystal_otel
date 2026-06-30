@@ -11,6 +11,10 @@ module CrystalOtel
 
     private
 
+    def otel_utf8(value)
+      value.to_s.dup.force_encoding("UTF-8").scrub("?")
+    end
+
     def otel_trace_action
       span = OpenTelemetry::Trace.current_span
       return yield unless span.context.valid?
@@ -32,12 +36,11 @@ module CrystalOtel
     def otel_record_request(span)
       span.set_attribute("http.request.method", request.method)
       span.set_attribute("http.request.path", request.path)
-      span.set_attribute("http.request.query", request.query_string.truncate(512)) if request.query_string.present?
+      span.set_attribute("http.request.query", otel_utf8(request.query_string).truncate(512)) if request.query_string.present?
       span.set_attribute("http.request.content_type", request.content_type.to_s) if request.content_type.present?
 
       if request.content_type&.include?("json") && request.raw_post.present?
-        body = request.raw_post.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?").truncate(2048)
-        span.set_attribute("http.request.body", body)
+        span.set_attribute("http.request.body", otel_utf8(request.raw_post).truncate(2048))
       end
 
       # Record useful request metadata
@@ -54,8 +57,7 @@ module CrystalOtel
       span.set_attribute("http.response.content_type", response.content_type.to_s) if response.content_type.present?
 
       if response.content_type&.include?("json") && response.body.present?
-        body = response.body.encode("UTF-8", invalid: :replace, undef: :replace, replace: "?").truncate(2048)
-        span.set_attribute("http.response.body", body)
+        span.set_attribute("http.response.body", otel_utf8(response.body).truncate(2048))
       end
 
       # Mark 4xx and 5xx responses as errors

@@ -28,16 +28,21 @@ module CrystalOtel
       end
     end
 
-    # Inserts Rack middleware immediately after ActionDispatch::RequestId so that
-    # the request ID is available to both middlewares via request headers.
-    # - ExceptionTracker: captures unhandled exceptions as OTel span events.
-    # - RequestMetrics: records HTTP request duration and status-code counters.
+    # Inserts the Rack middleware that this gem provides.
+    # - ExceptionTracker must sit *inside* ActionDispatch::DebugExceptions:
+    #   ShowExceptions/DebugExceptions rescue unhandled exceptions and render an
+    #   HTTP error response without re-raising, so a tracker placed outside them
+    #   never sees the exception and can't call span.record_exception. Inserting
+    #   it after DebugExceptions lets the raised exception reach the tracker (which
+    #   records it on the current span and re-raises) before Rails renders the error.
+    # - RequestMetrics stays outermost (after ActionDispatch::RequestId) so it
+    #   times the full request, including the rendered error response.
     # Each middleware is only added when the corresponding feature flag is on.
     initializer "crystal_otel.middleware" do |app|
       next unless CrystalOtel.configuration.enabled?
 
       if CrystalOtel.configuration.exception_tracking
-        app.middleware.insert_after ActionDispatch::RequestId,
+        app.middleware.insert_after ActionDispatch::DebugExceptions,
                                     Middleware::ExceptionTracker
       end
       if CrystalOtel.configuration.metrics_enabled
