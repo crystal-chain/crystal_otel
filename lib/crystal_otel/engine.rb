@@ -51,6 +51,15 @@ module CrystalOtel
       end
     end
 
+    initializer "crystal_otel.neo4j", after: "crystal_otel.configure_sdk" do
+      next unless CrystalOtel.configuration.enabled?
+      next unless CrystalOtel.configuration.neo4j_tracing
+
+      config.after_initialize do
+        CrystalOtel::Instrumentation::Neo4j.install
+      end
+    end
+
     # Placeholder for Sidekiq-specific setup. The actual auto-instrumentation for
     # Sidekiq is handled by the opentelemetry-instrumentation-sidekiq gem loaded
     # via +use_all+ in SdkConfigurator#configure_traces; no additional code is

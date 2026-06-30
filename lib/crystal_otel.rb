@@ -16,6 +16,13 @@ module CrystalOtel
     def reset!
       @configuration = Configuration.new
     end
+
+    def trace(name, attributes: {})
+      return yield unless defined?(OpenTelemetry) && configuration.enabled?
+
+      OpenTelemetry.tracer_provider.tracer("crystal_otel.app")
+                   .in_span(name, attributes: attributes) { |span| yield(span) }
+    end
   end
 end
 
@@ -27,4 +34,5 @@ require "crystal_otel/middleware/request_metrics"
 require "crystal_otel/metrics/runtime_metrics"
 require "crystal_otel/metrics/business_metrics"
 require "crystal_otel/controller_tracking"
+require "crystal_otel/instrumentation/neo4j"
 require "crystal_otel/engine" if defined?(Rails::Engine)
