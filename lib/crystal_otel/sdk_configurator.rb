@@ -77,7 +77,7 @@ module CrystalOtel
     def build_instrumentation_config(config)
       defaults = {
         "OpenTelemetry::Instrumentation::Rack" => {
-          untraced_endpoints: [ "/api/v1/healthz", "/healthz", "/health", "/up" ]
+          untraced_endpoints: [ "/api/v1/healthz", "/healthz", "/health", "/up", "/ping" ]
         },
         "OpenTelemetry::Instrumentation::ActionPack" => {
           span_naming: :class
