@@ -55,14 +55,15 @@ module CrystalOtel
       def trace_query(query)
         return yield unless tracing_enabled?
 
+        frame = caller_frame
         attributes = begin
-          build_attributes(query)
+          build_attributes(query, frame)
         rescue StandardError
           nil
         end
         return yield if attributes.nil?
 
-        tracer.in_span("neo4j.query", kind: :client, attributes: attributes) { yield }
+        tracer.in_span(span_name(frame), kind: :client, attributes: attributes) { yield }
       end
 
       def tracing_enabled?
@@ -73,13 +74,44 @@ module CrystalOtel
         OpenTelemetry.tracer_provider.tracer("crystal_otel.neo4j")
       end
 
-      def build_attributes(query)
+      def build_attributes(query, frame = nil)
         text = statement_text(query)
         {
           "db.system" => "neo4j",
           "db.statement" => obfuscate(text).slice(0, MAX_STATEMENT_LENGTH),
-          "db.operation" => operation(text)
+          "db.operation" => operation(text),
+          "code.function" => frame&.label,
+          "code.filepath" => frame&.path,
+          "code.lineno" => frame&.lineno
         }.compact
+      end
+
+      # Span name carries the application method that issued the query, e.g.
+      # "neo4j.query ProductService#refresh". Falls back to the bare
+      # "neo4j.query" when no application frame can be identified.
+      def span_name(frame)
+        label = frame&.label
+        label ? "neo4j.query #{label}" : "neo4j.query"
+      end
+
+      # Walks the call stack for the first *application* frame — i.e. the code
+      # that actually issued the query. Everything between here and the app is
+      # gem-internal: this file (trace_query + the query prepend) and ActiveGraph
+      # / neo4j-driver frames, all of which live under a `/gems/` path. Returns a
+      # Thread::Backtrace::Location or nil; never raises, so caller lookup can
+      # never break a DB call.
+      def caller_frame
+        caller_locations.find { |loc| app_frame?(loc) }
+      rescue StandardError
+        nil
+      end
+
+      def app_frame?(loc)
+        path = loc.path
+        return false if path.nil?
+        return false if path == __FILE__
+
+        !path.include?("/gems/")
       end
 
       # The first arg to ActiveGraph::Base.query is either a String (raw Cypher,
@@ -114,7 +146,7 @@ module CrystalOtel
         cypher[/\A\s*(\w+)/, 1]&.upcase
       end
 
-      private_class_method :tracer, :build_attributes
+      private_class_method :tracer, :build_attributes, :span_name, :caller_frame, :app_frame?
     end
   end
 end
