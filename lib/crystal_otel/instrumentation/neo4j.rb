@@ -19,6 +19,15 @@ module CrystalOtel
     # thread/fiber, before `transaction` enters `Sync {}`, so the controller's
     # span is still current and `neo4j.query` spans nest correctly under it (or
     # under a manual `CrystalOtel.trace(...)` span).
+    #
+    # That leaves one gap: queries issued *inside* an already-open transaction —
+    # most notably the `after_save` cascade that `save` runs inside the implicit
+    # transaction opened by ActiveGraph's `cascade_save`. Those run below the
+    # `Sync {}` boundary with an empty context and orphan. `TransactionInstrumentation`
+    # closes it by capturing the current context on the request fiber (before the
+    # transaction enters `Sync {}`) and re-establishing it inside the transaction
+    # block, so spans created there nest under the request trace. Same technique
+    # report-gene's `Neo4j::Parallel` uses to carry context across threads.
     module Neo4j
       MAX_STATEMENT_LENGTH = 2000
 
@@ -31,6 +40,28 @@ module CrystalOtel
         end
       end
 
+      # Prepended onto ActiveGraph::Base's singleton class. `send_transaction`
+      # is the single funnel every transaction passes through — both `save`'s
+      # `cascade_save` block and the implicit `transaction(implicit: true)`
+      # wrapping each `query`. It is entered on the request fiber, *before*
+      # `run_transaction_work` hands the block to the driver's `sync`-marked
+      # `write_transaction`/`read_transaction` (the `Sync {}` boundary). We
+      # capture the OpenTelemetry context here and re-establish it inside the
+      # block via `Context.with_current`, so spans created below the fiber
+      # boundary nest under the request trace instead of orphaning. Wrapping the
+      # block (rather than opening a span) is a pure passthrough: `with_current`
+      # returns the block's value, and errors/`ActiveGraph::Rollback` propagate
+      # unchanged.
+      module TransactionInstrumentation
+        def send_transaction(method, **config, &block)
+          return super unless block && CrystalOtel::Instrumentation::Neo4j.tracing_enabled?
+
+          ctx = ::OpenTelemetry::Context.current
+          wrapped = ->(tx) { ::OpenTelemetry::Context.with_current(ctx) { block.call(tx) } }
+          super(method, **config, &wrapped)
+        end
+      end
+
       module_function
 
       def install
@@ -39,6 +70,7 @@ module CrystalOtel
         return unless ::ActiveGraph::Base.respond_to?(:query)
 
         ::ActiveGraph::Base.singleton_class.prepend(QueryInstrumentation)
+        ::ActiveGraph::Base.singleton_class.prepend(TransactionInstrumentation)
         @installed = true
         Rails.logger.info("[CrystalOtel] Neo4j (ActiveGraph) instrumentation installed") if defined?(Rails)
         true

@@ -82,4 +82,47 @@ RSpec.describe CrystalOtel::Instrumentation::Neo4j do
       expect(instrumented.new.query(query, wrap: false)).to eq([ query, { wrap: false } ])
     end
   end
+
+  describe CrystalOtel::Instrumentation::Neo4j::TransactionInstrumentation do
+    let(:base) do
+      Class.new do
+        # Mimics ActiveGraph's send_transaction: records the call and yields a
+        # transaction object to the block, returning the block's value.
+        attr_reader :calls
+
+        def initialize
+          @calls = []
+        end
+
+        def send_transaction(method, **config, &block)
+          @calls << [ method, config ]
+          block&.call(:tx)
+        end
+      end
+    end
+
+    let(:instrumented) do
+      klass = Class.new(base)
+      klass.prepend(described_class)
+      klass
+    end
+
+    it 'forwards method and config to super and yields the transaction to the block' do
+      # OpenTelemetry is absent in the unit suite, so tracing is disabled and
+      # this exercises the passthrough branch; the block must still run exactly
+      # once with the transaction and its value must be returned.
+      obj = instrumented.new
+      yielded = nil
+      result = obj.send_transaction(:write_transaction, timeout: 5) { |tx| yielded = tx; :done }
+      expect(yielded).to eq(:tx)
+      expect(result).to eq(:done)
+      expect(obj.calls).to eq([ [ :write_transaction, { timeout: 5 } ] ])
+    end
+
+    it 'passes through unchanged when no block is given' do
+      obj = instrumented.new
+      expect { obj.send_transaction(:read_transaction) }.not_to raise_error
+      expect(obj.calls).to eq([ [ :read_transaction, {} ] ])
+    end
+  end
 end
