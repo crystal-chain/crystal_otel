@@ -31,6 +31,17 @@ module CrystalOtel
     module Neo4j
       MAX_STATEMENT_LENGTH = 2000
 
+      # Statements that carry no information worth a span. `RETURN 1` is the
+      # connection-pool keepalive probe report-gene runs every 30s against 5
+      # connections — 14 400 spans/day/pod, ~260 000/day across the fleet, all
+      # saying the same nothing. Worse, on an environment with no reachable
+      # collector they are the *only* spans produced, so the export failures they
+      # provoke are the entire log.
+      #
+      # Matched on the whole normalised statement, so an application query that
+      # merely ends in `RETURN 1` is unaffected.
+      DEFAULT_UNTRACED_STATEMENTS = [ "RETURN 1" ].freeze
+
       # Prepended onto ActiveGraph::Base's singleton class. Bare `super`
       # forwards the original arguments and propagates any query error normally
       # (tracer.in_span records and re-raises it).
@@ -87,15 +98,44 @@ module CrystalOtel
       def trace_query(query)
         return yield unless tracing_enabled?
 
+        # Every `yield` sits outside the rescues on purpose. Yielding inside one
+        # would let a failing query be caught here, fall through to a later
+        # `return yield`, and run a second time.
+        text = begin
+          statement_text(query)
+        rescue StandardError
+          nil
+        end
+        return yield if text.nil? || untraced_statement?(text)
+
         frame = caller_frame
         attributes = begin
-          build_attributes(query, frame)
+          build_attributes(text, frame)
         rescue StandardError
           nil
         end
         return yield if attributes.nil?
 
         tracer.in_span(span_name(frame), kind: :client, attributes: attributes) { yield }
+      end
+
+      # Compares on the normalised statement so casing, wrapping whitespace and a
+      # trailing semicolon do not decide whether a probe gets a span.
+      def untraced_statement?(text)
+        normalized = normalize_statement(text)
+        return false if normalized.empty?
+
+        untraced_statements.any? { |statement| normalize_statement(statement) == normalized }
+      rescue StandardError
+        false
+      end
+
+      def untraced_statements
+        CrystalOtel.configuration.neo4j_untraced_statements || DEFAULT_UNTRACED_STATEMENTS
+      end
+
+      def normalize_statement(text)
+        text.to_s.gsub(/\s+/, " ").strip.sub(/;\z/, "").strip.upcase
       end
 
       def tracing_enabled?
@@ -106,8 +146,7 @@ module CrystalOtel
         OpenTelemetry.tracer_provider.tracer("crystal_otel.neo4j")
       end
 
-      def build_attributes(query, frame = nil)
-        text = statement_text(query)
+      def build_attributes(text, frame = nil)
         {
           "db.system" => "neo4j",
           "db.statement" => obfuscate(text).slice(0, MAX_STATEMENT_LENGTH),

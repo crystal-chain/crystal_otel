@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-08-05
+
+### Changed
+
+- **Neo4j keepalive probes no longer produce spans.** `RETURN 1` — the statement report-gene's connection-pool keepalive runs every 30s against 5 connections — is now skipped by `Instrumentation::Neo4j`. That is 14 400 spans/day/pod, roughly 260 000/day across the fleet, none of which answer a question anyone asks. On an environment with no reachable collector they are the only spans produced, so they were also the sole cause of the repeating `OpenTelemetry error: Unable to export N spans` lines.
+
+  Matching is on the whole normalised statement (case, surrounding whitespace and a trailing semicolon are ignored), so an application query that merely *ends* in `RETURN 1` still gets a span. Configurable via `config.neo4j_untraced_statements`: assign an array to replace the default list, or `[]` to trace everything.
+
+  Note this does not silence `SystemCallError in MetricsExporter#send_bytes` — the metrics exporter pushes on its own schedule, independent of spans.
+
 ## [0.4.2] - 2026-06-30
 
 ### Fixed

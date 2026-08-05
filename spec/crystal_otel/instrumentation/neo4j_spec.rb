@@ -54,6 +54,76 @@ RSpec.describe CrystalOtel::Instrumentation::Neo4j do
       expect(described_class.tracing_enabled?).to be(false)
       expect(described_class.trace_query('MATCH (n)') { :ran }).to eq(:ran)
     end
+
+    # The plain-Ruby suite has no OpenTelemetry, so trace_query returns at the
+    # tracing_enabled? guard and never reaches the statement check. Stub the guard
+    # (and the tracer it would then reach for) to exercise the real branch.
+    context 'with tracing enabled' do
+      let(:tracer) { double('tracer') }
+
+      before do
+        allow(described_class).to receive_messages(tracing_enabled?: true, tracer: tracer)
+        allow(tracer).to receive(:in_span) { |*, **, &blk| blk.call }
+      end
+
+      it 'opens no span for the keepalive probe, and still runs the query' do
+        expect(tracer).not_to receive(:in_span)
+        expect(described_class.trace_query('RETURN 1') { :ran }).to eq(:ran)
+      end
+
+      it 'opens a span for an application query' do
+        expect(tracer).to receive(:in_span).once
+        expect(described_class.trace_query('MATCH (n) RETURN n') { :ran }).to eq(:ran)
+      end
+
+      it 'runs the block exactly once when the statement is untraced' do
+        runs = 0
+        described_class.trace_query('RETURN 1') { runs += 1 }
+        expect(runs).to eq(1)
+      end
+
+      it 'lets an error out of an untraced statement propagate, having run once' do
+        # Guards the shape of the method: a `yield` inside one of the rescues would
+        # swallow this error and then run the block a second time.
+        runs = 0
+        expect do
+          described_class.trace_query('RETURN 1') do
+            runs += 1
+            raise IOError, 'boom'
+          end
+        end.to raise_error(IOError)
+        expect(runs).to eq(1)
+      end
+    end
+  end
+
+  describe '.untraced_statement?' do
+    it 'matches the keepalive probe regardless of case, whitespace or semicolon' do
+      expect(described_class.untraced_statement?('RETURN 1')).to be(true)
+      expect(described_class.untraced_statement?("  return   1 ;\n")).to be(true)
+    end
+
+    it 'does not match an application query that merely ends in RETURN 1' do
+      expect(described_class.untraced_statement?('MATCH (n) RETURN 1')).to be(false)
+    end
+
+    it 'does not match an empty statement' do
+      expect(described_class.untraced_statement?('   ')).to be(false)
+    end
+
+    it 'honours a configured list, and traces everything when given []' do
+      CrystalOtel.configuration.neo4j_untraced_statements = [ 'MATCH (n) RETURN n' ]
+      expect(described_class.untraced_statement?('MATCH (n) RETURN n')).to be(true)
+      expect(described_class.untraced_statement?('RETURN 1')).to be(false)
+
+      CrystalOtel.configuration.neo4j_untraced_statements = []
+      expect(described_class.untraced_statement?('RETURN 1')).to be(false)
+    end
+
+    it 'falls back to the default list when configuration leaves it nil' do
+      CrystalOtel.configuration.neo4j_untraced_statements = nil
+      expect(described_class.untraced_statements).to eq(described_class::DEFAULT_UNTRACED_STATEMENTS)
+    end
   end
 
   describe CrystalOtel::Instrumentation::Neo4j::QueryInstrumentation do

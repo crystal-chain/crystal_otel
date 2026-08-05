@@ -4,7 +4,8 @@ module CrystalOtel
   class Configuration
     attr_accessor :service_name, :service_version, :otlp_endpoint, :otlp_protocol,
                   :enabled, :log_correlation, :exception_tracking, :metrics_enabled,
-                  :sidekiq_tracing, :neo4j_tracing, :resource_attributes, :instrumentations, :propagators,
+                  :sidekiq_tracing, :neo4j_tracing, :neo4j_untraced_statements,
+                  :resource_attributes, :instrumentations, :propagators,
                   :sampling_ratio,
                   :batch_max_queue_size, :batch_schedule_delay_ms, :batch_max_export_batch_size
 
@@ -24,6 +25,13 @@ module CrystalOtel
       # Neo4j query tracing. Default on; the installer is a no-op unless
       # neo4j-ruby-driver is loaded, so this is safe for services without Neo4j.
       @neo4j_tracing      = true
+      # Statements that run untraced even when neo4j_tracing is on — keepalive
+      # and health probes, whose spans are pure volume. nil means "whatever
+      # Instrumentation::Neo4j::DEFAULT_UNTRACED_STATEMENTS lists"; assign an
+      # array to replace that, or [] to trace everything. Left nil rather than
+      # seeded from the constant so this file, required long before the
+      # instrumentation, does not depend on its load order.
+      @neo4j_untraced_statements = nil
 
       # Seed from the standard OTEL_RESOURCE_ATTRIBUTES env var; app config merges on top.
       @resource_attributes = parse_otel_resource_attributes_env
