@@ -40,4 +40,10 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'opentelemetry-instrumentation-rails', '~> 0.39'
   spec.add_dependency 'opentelemetry-instrumentation-redis', '~> 0.28'
   spec.add_dependency 'opentelemetry-instrumentation-sidekiq', '~> 0.28'
+
+  # shortcut: kkRepo drops the LAST dependency's version requirement from the index it
+  # serves (https://github.com/klboke/kkRepo/issues/410), so `bundle install` fails with
+  # "revealed dependencies not in the API or the lockfile". An unconstrained dependency
+  # last means nothing is lost. Remove once #410 ships a fix.
+  spec.add_dependency 'ostruct'
 end
