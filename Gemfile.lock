@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    crystal_otel (0.5.2)
+    crystal_otel (0.5.3)
       opentelemetry-exporter-otlp (~> 0.32)
       opentelemetry-exporter-otlp-metrics (~> 0.7)
       opentelemetry-instrumentation-action_pack (~> 0.15)
@@ -16,6 +16,7 @@ PATH
       opentelemetry-instrumentation-sidekiq (~> 0.28)
       opentelemetry-metrics-sdk (~> 0.12)
       opentelemetry-sdk (~> 1.10)
+      ostruct
       rails (>= 7.0)
 
 GEM
@@ -269,6 +270,7 @@ GEM
       opentelemetry-semantic_conventions
     opentelemetry-semantic_conventions (1.41.0)
       opentelemetry-api (~> 1.0)
+    ostruct (0.6.3)
     parallel (2.1.0)
     parser (3.3.11.1)
       ast (~> 2.4.1)
