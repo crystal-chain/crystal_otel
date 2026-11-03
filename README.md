@@ -6,7 +6,7 @@ OpenTelemetry instrumentation gem for Crystal Chain Rails applications. Provides
 
 - Distributed tracing with OTLP/HTTP export
 - Auto-instrumentation for Rails, Rack, ActionPack, ActiveRecord, PG, Redis, Sidekiq, Net::HTTP, Faraday, concurrent-ruby
-- HTTP request duration and active-request metrics
+- HTTP request duration (labelled by route template, e.g. `/api/v2/traces/:id`) and active-request metrics
 - Ruby runtime metrics (GC, threads, RSS memory)
 - Business metrics DSL (counters + gauges)
 - Trace ID / Span ID injected into every log line
