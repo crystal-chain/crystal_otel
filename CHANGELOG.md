@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-11-03
+
+### Fixed
+
+- **`http.server.request.duration` is labelled with the route template, not the raw path.**
+  `Middleware::RequestMetrics` set `http.route` to `PATH_INFO`, so every trace ID, UUID and
+  scanner probe (`/api/.env`, `/api/uploads/..%2F..%2F.env`) became its own series, multiplied
+  by 23 buckets, every status code and every method. Across the fleet that was 3 492 distinct
+  routes and about 64% of all metric samples in SigNoz. `report-chfabricantscuir` alone hit
+  the SDK's 2 000-series cap, and `report-agec` was at 1 229. `http.route` is now the matched Rails route
+  (`/api/v2/traces/:id`, `(.:format)` stripped). Requests no route matched share the single
+  value `unmatched`.
+
+  The route is read after the app has handled the request, through
+  `ActionDispatch::Request#route_uri_pattern`. Rails 7.1 writes it to env eagerly, but
+  Rails 8 computes it lazily from `env["action_dispatch.route"]`, so reading the env key
+  directly would label every request `unmatched` there.
+
+  **Attribute changes:** `http.server.active_requests` no longer carries `http.route`, only
+  `http.request.method`, because it is incremented before routing and has to be decremented
+  with the same attributes. A dashboard or alert that filters either metric on a raw path stops matching.
+
 ## [0.5.3] - 2026-10-14
 
 ### Fixed
